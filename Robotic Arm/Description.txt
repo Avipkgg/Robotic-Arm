@@ -1,0 +1,6 @@
+A robotic arm is a type of mechanical arm that is similar to the human arm. It has various segments which closely resemble the shoulder, an elbow, and a wrist. A robotic arm is programmable and can be directed to perform a variety of functions just like the human arm can. The main purpose of this project is to carry out a particular object and keep it in a required position.
+
+Applications:
+1. Picking and placing objects can be easily performed with the help gripper.
+2. Robotic arms are used in manufacturing industries for assembling parts
+3. ROS based Robotic Arm can be used in agriculture for performing tasks such as planting, harvesting and pruning.

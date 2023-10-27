@@ -1,0 +1,10 @@
+1. A4988 Stepper Motor Driver
+2. MG996R Servo Motor
+3. Arduino Mega 2560
+4. PCB Board
+5. SMPS
+6. DB-Connector
+7. Push Button Switch
+8. DC-DC Boost Converter
+9. Ball Bearings
+10. PLA Filament Material

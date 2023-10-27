@@ -1,0 +1,291 @@
+
+#include <Adafruit_TiCoServo.h>
+#include <AccelStepper.h>
+#include <ros.h>
+#include <sensor_msgs/JointState.h>
+#include <ros/time.h>
+#include <moveit_msgs/MoveGroupActionFeedback.h>
+#include <Adafruit_NeoPixel.h>
+#include "hsv.h"
+#ifdef __AVR__
+#include <avr/power.h> // Required for 16 MHz Adafruit Trinket
+#endif
+#define PIN        10 // neo pixel
+// How many NeoPixels are attached to the Arduino?
+#define NUMPIXELS 41 // Popular NeoPixel ring size
+Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+
+AccelStepper jo(1, 8, 9);
+Adafruit_TiCoServo j1l;
+Adafruit_TiCoServo j1r;
+Adafruit_TiCoServo j2;
+Adafruit_TiCoServo j3;
+Adafruit_TiCoServo j4;
+Adafruit_TiCoServo g;
+int limit_switch_pin = 28;
+int stepper_homing_speed = 40;
+int stepper_speed = 300;
+
+// ROS node
+ros::NodeHandle nh;
+int SERVO_CURRENT_POSITIONS[6];
+
+float TARGET_JOINT_POSITIONS[6] = {0, 0, 0, 0, 0, 0}
+
+void writeServos() {
+  int j0_tar = 0;
+  int j1l_tar = 0;
+  int j2_tar = 0;
+  int j3_tar = 0;
+  int j4_tar = 0;
+  int g_tar = 0;
+  for (int j = 0; j < 6; j++) {
+    int target_angle;
+    if (j == 0) {
+      target_angle = -int(TARGET_JOINT_POSITIONS[j] * (180 / 3.14));
+      j0_tar = map(target_angle, 0, 256, 0, 500);
+    }
+    else if (j == 1) {
+      target_angle = -int(TARGET_JOINT_POSITIONS[j] * (180 / 3.14));
+      if (target_angle > 180) target_angle = 180;
+      if (target_angle < 0) target_angle = 0;
+      j1l_tar = target_angle;
+      //j1r_tar = map(target_angle, 0, 180, 180, 0);
+    }
+    else if (j == 2) {
+      target_angle = int(TARGET_JOINT_POSITIONS[j] * (180 / 3.14));
+      if (target_angle > 180) target_angle = 180;
+      if (target_angle < 0) target_angle = 0;
+      j2_tar = map(target_angle, 0, 180, 180, 0);
+    }
+    else if (j == 3) {
+      target_angle = int(TARGET_JOINT_POSITIONS[j] * (180 / 3.14));
+      if (target_angle > 180) target_angle = 180;
+      if (target_angle < 0) target_angle = 0;
+      j3_tar = map(target_angle, 0, 180, 180, 0);
+    }
+    else if (j == 4) {
+      target_angle = int(TARGET_JOINT_POSITIONS[j] * (180 / 3.14));
+      if (target_angle >= 0) {
+        j4_tar = map(target_angle, 0, 90, 90, 180);
+      } else {
+        j4_tar = map(target_angle, 0, -90, 90, 0);
+      }
+
+    }
+    else if (j == 5) {
+      target_angle = int(TARGET_JOINT_POSITIONS[j] * (180 / 3.14)) * 3.5;
+      if (target_angle > 180) target_angle = 180;
+      if (target_angle < 0) target_angle = 0;
+      g_tar = target_angle;
+    }
+  }
+  int j1l_start = SERVO_CURRENT_POSITIONS[1];
+  int j2_start = SERVO_CURRENT_POSITIONS[2];
+  int j3_start = SERVO_CURRENT_POSITIONS[3];
+  int j4_start = SERVO_CURRENT_POSITIONS[4];
+  jo.moveTo(j0_tar);
+  bool j1_break = false;
+  bool j2_break = false;
+  bool j3_break = false;
+  bool j4_break = false;
+  for (int i = 0; i < 180; i++) {
+    //j1
+    if (j1l_tar > j1l_start && j1l_tar != j1l_start) {
+      j1l.write(j1l_start);
+      j1r.write(map(j1l_start, 0, 180, 180, 0));
+      j1l_start++;
+    } else if (j1l_tar < j1l_start && j1l_tar != j1l_start) {
+      j1l.write(j1l_start);
+      j1r.write(map(j1l_start, 0, 180, 180, 0));
+      j1l_start--;
+    } else {
+      j1_break = true;
+    }
+    //j2
+    if (j2_tar > j2_start && j2_tar != j2_start) {
+      j2.write(j2_start);
+      j2_start++;
+    } else if (j2_tar < j2_start && j2_tar != j2_start) {
+      j2.write(j2_start);
+      j2_start--;
+    } else {
+      j2_break = true;
+    }
+    //j3
+    if (j3_tar > j3_start && j3_tar != j3_start) {
+      j3.write(j3_start);
+      j3_start++;
+    } else if (j3_tar < j3_start && j3_tar != j3_start) {
+      j3.write(j3_start);
+      j3_start--;
+    } else {
+      j3_break = true;
+    }
+    //j4
+    if (j4_tar > j4_start && j4_tar != j4_start) {
+      j4.write(j4_start);
+      j4_start++;
+    } else if (j4_tar < j4_start && j4_tar != j4_start) {
+      j4.write(j4_start);
+      j4_start--;
+    } else {
+      j4_break = true;
+    }
+    if (j1_break && j2_break && j3_break && j4_break) {
+      break;
+    }
+    delay(40);
+  }
+  moveJ0To(j0_tar);
+  g.write(g_tar);
+  SERVO_CURRENT_POSITIONS[0] = j0_tar;
+  SERVO_CURRENT_POSITIONS[1] = j1l_tar;
+  SERVO_CURRENT_POSITIONS[2] = j2_tar;
+  SERVO_CURRENT_POSITIONS[3] = j3_tar;
+  SERVO_CURRENT_POSITIONS[4] = j4_tar;
+  SERVO_CURRENT_POSITIONS[5] = g_tar;
+}
+void jointStateCallback(const sensor_msgs::JointState& msg) {
+  TARGET_JOINT_POSITIONS[0] = msg.position[0];
+  TARGET_JOINT_POSITIONS[1] = msg.position[1];
+  TARGET_JOINT_POSITIONS[2] = msg.position[2];
+  TARGET_JOINT_POSITIONS[3] = msg.position[3];
+  TARGET_JOINT_POSITIONS[4] = msg.position[4];
+  TARGET_JOINT_POSITIONS[5] = msg.position[5];
+  //writeServos();
+}
+
+void movegroup_callback(const moveit_msgs::MoveGroupActionFeedback& msg) {
+  if (msg.status.status == 3) {
+    pixels.clear(); // Set all pixel colors to 'off'
+    for (int i = 0; i < NUMPIXELS; i++) { // For each pixel...
+      pixels.setPixelColor(i, pixels.Color(255, 0, 0));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+      delay(10); // Pause before next pass through loop
+    }
+    writeServos();
+     pixels.clear(); // Set all pixel colors to 'off'
+    for (int i = 0; i < NUMPIXELS; i++) { // For each pixel...
+      pixels.setPixelColor(i, pixels.Color(0, 255, 0));
+      pixels.show();   // Send the updated pixel colors to the hardware.
+      delay(10); // Pause before next pass through loop
+    }
+  }
+}
+ros::Subscriber<sensor_msgs::JointState> sub("/joint_states", &jointStateCallback);
+ros::Subscriber<moveit_msgs::MoveGroupActionFeedback> fed_sub("/move_group/feedback", &movegroup_callback); 
+bool is_end_Swt_Touch()
+{
+  if (digitalRead(limit_switch_pin))
+  {
+    return false;
+  }
+  else
+  {
+    delay(20);
+    if (digitalRead(limit_switch_pin))
+      return false;
+    else
+      return true;
+  }
+}
+
+void moveJ0To(int pos)
+{
+  jo.moveTo(pos);
+  while (!jo.distanceToGo() == 0)
+  {
+    if (!is_end_Swt_Touch())
+    {
+      if (!jo.distanceToGo() == 0)
+        jo.run();
+    }
+    else
+    {
+      jo.stop();
+      delay(300);
+      jo.setCurrentPosition(0);
+      jo.moveTo(pos);
+      jo.setMaxSpeed(stepper_speed);
+      jo.setAcceleration(stepper_speed * 0.4);
+
+      // reset to given position
+      while (!jo.distanceToGo() == 0)
+        jo.run();
+    }
+  }
+}
+
+void setHome()
+{
+  j1l.write(0);
+  j1r.write(180);
+  j2.write(180);
+  j3.write(170);
+  j4.write(90);
+  g.write(0);
+  SERVO_CURRENT_POSITIONS[0] = 0;
+  SERVO_CURRENT_POSITIONS[1] = 0;
+  SERVO_CURRENT_POSITIONS[2] = 180;
+  SERVO_CURRENT_POSITIONS[3] = 170;
+  SERVO_CURRENT_POSITIONS[4] = 90;
+  SERVO_CURRENT_POSITIONS[5] = 0;
+  jo.setSpeed(stepper_homing_speed);
+  while (!is_end_Swt_Touch())
+  {
+    jo.runSpeed();
+    delay(1);
+  }
+  jo.stop();
+  jo.setCurrentPosition(0);
+  jo.setMaxSpeed(stepper_speed);
+  jo.setAcceleration(stepper_speed * .1);
+  moveJ0To(-10);
+  delay(300);
+
+}
+
+
+
+void setup() {
+
+  pixels.begin(); // INITIALIZE NeoPixel strip object (REQUIRED)
+  pixels.clear(); // Set all pixel colors to 'off'
+  for (int i = 0; i < NUMPIXELS; i++) { // For each pixel...
+    pixels.setPixelColor(i, pixels.Color(0, 255, 0));
+    pixels.show();   // Send the updated pixel colors to the hardware.
+    delay(10); // Pause before next pass through loop
+  }
+  j1l.attach(2);
+  j1r.attach(3);
+  j2.attach(11);
+  j3.attach(5);
+  j4.attach(6);
+  g.attach(7);
+
+  jo.setMaxSpeed(stepper_speed);
+  jo.setAcceleration(stepper_speed * .04);
+  jo.stop();
+  pinMode(8, OUTPUT);
+  pinMode(9, OUTPUT);
+  digitalWrite(8, HIGH);
+  digi[INFO] [1680269397.293103]: Requesting topics...
+[INFO] [1680269397.346762]: Note: subtalWrite(9, HIGH);
+  pinMode(limit_switch_pin, INPUT_PULLUP);
+  setHome();
+  nh.g[INFO] [1680269397.293103]: Requesting topics...
+[INFO] [1680269397.346762]: Note: subetHardware()->setBaud(115200);
+  nh.initNode();
+  nh.subscribe(sub);
+  nh.subscribe(fed_sub);
+#if defined(__AVR_ATtiny85__) && (F_CPU == 16000000)
+  clock_prescale_set(clock_div_1);
+#endif
+  // END of Trinket-specific code.
+
+}
+
+void loop() {
+  nh.spinOnce();
+}
